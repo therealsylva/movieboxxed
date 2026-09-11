@@ -118,6 +118,7 @@ data class StreamSource(
     val durationSeconds: Long? = null,
     val uploader: String? = null,
     val subtitles: List<SubtitleTrack> = emptyList(),
+    val headers: Map<String, String> = emptyMap(),
 ) {
     val qualityLabel: String
         get() = if (resolution > 0) "${resolution}p" else "Auto"

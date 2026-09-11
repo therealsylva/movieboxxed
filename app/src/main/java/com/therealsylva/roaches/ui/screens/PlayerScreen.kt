@@ -58,6 +58,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -103,8 +105,16 @@ fun PlayerScreen(
     val activity = remember(context) { context.findActivity() }
     val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
     LocalConfiguration.current
-    val player = remember {
-        ExoPlayer.Builder(context).build().apply {
+    val player = remember(source.url, source.headers) {
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent("com.community.oneroom/50020121 (Linux; U; Android 13; en_US; 23078RKD5C; Build/TQ2A.230405.003; Cronet/135.0.7012.3)")
+            .setDefaultRequestProperties(source.headers)
+            .setAllowCrossProtocolRedirects(true)
+        val mediaSourceFactory = DefaultMediaSourceFactory(context)
+            .setDataSourceFactory(httpFactory)
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build().apply {
             playWhenReady = true
         }
     }

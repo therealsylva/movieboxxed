@@ -156,6 +156,19 @@ internal class MovieBoxApi(
             "&resourceId=${encode(resourceId)}",
     )
 
+    suspend fun playInfo(
+        subjectId: String,
+        season: Int = 0,
+        episode: Int = 0,
+    ): Any {
+        val path = if (season > 0 && episode > 0) {
+            "/wefeed-mobile-bff/subject-api/play-info/v2?subjectId=${encode(subjectId)}&se=$season&ep=$episode"
+        } else {
+            "/wefeed-mobile-bff/subject-api/play-info/v2?subjectId=${encode(subjectId)}"
+        }
+        return request("GET", path)
+    }
+
     private suspend fun request(method: String, path: String, body: String? = null): Any {
         if (!requiresSession(path)) return requestAcrossHosts(method, path, body)
 
