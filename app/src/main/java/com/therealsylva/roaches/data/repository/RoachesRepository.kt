@@ -14,6 +14,7 @@ import com.therealsylva.roaches.data.model.Shelf
 import com.therealsylva.roaches.data.model.StreamSource
 import com.therealsylva.roaches.data.model.SubtitleTrack
 import com.therealsylva.roaches.data.remote.MovieBoxApi
+import com.therealsylva.roaches.data.remote.DashResolver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -165,6 +166,17 @@ class RoachesRepository(private val store: LocalStore) {
         episode: Int,
         languageHint: String? = null,
     ): List<StreamSource> {
+        val dashSources = try {
+            parsePlayInfoSources(api.playInfo(subjectId, season, episode), languageHint)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            emptyList()
+        }
+        if (dashSources.isNotEmpty()) {
+            return orderStreamSources(dashSources, settings.playbackQuality, settings.preferredAudio)
+        }
+
         val rows = if (season > 0 && episode > 0) {
             val startPage = estimatedEpisodePage(
                 seasons = seasonsBySubject[subjectId].orEmpty(),
@@ -189,6 +201,7 @@ class RoachesRepository(private val store: LocalStore) {
             }
         }
         val parsed = parseStreamSources(rows, languageHint)
+            .filterNot { DashResolver.isNoticeUrl(it.url) }
         return orderStreamSources(parsed, settings.playbackQuality, settings.preferredAudio)
     }
 
@@ -204,6 +217,50 @@ class RoachesRepository(private val store: LocalStore) {
             }
         }.distinctBy(SubtitleTrack::url)
     }
+}
+
+internal fun parsePlayInfoSources(
+    payload: Any?,
+    languageHint: String?,
+): List<StreamSource> {
+    val root = payload as? JSONObject ?: return emptyList()
+    val data = root.optJSONObject("data") ?: root
+    val streams = data.optJSONArray("streams") ?: return emptyList()
+
+    return buildList {
+        repeat(streams.length()) { index ->
+            val stream = streams.optJSONObject(index) ?: return@repeat
+            val signCookie = stream.string("signCookie", "cookie", "signedCookie")
+            val dashUrl = signCookie?.let(DashResolver::resolveDashManifestFromPolicy)
+            val directUrl = stream.string("url", "resourceLink", "link", "mpd")
+                ?.takeUnless(DashResolver::isNoticeUrl)
+            val finalUrl = dashUrl ?: directUrl ?: return@repeat
+            if (DashResolver.isNoticeUrl(finalUrl)) return@repeat
+
+            val filename = stream.string("fileName", "name", "title")
+            val audio = stream.string("lanName", "language", "audio", "audioName")
+                ?: detectLanguage(filename)
+                ?: normalizeAudioLabel(languageHint)
+            val headers = buildMap {
+                if (!signCookie.isNullOrBlank()) put("Cookie", signCookie)
+                put("Referer", "https://sportslive.wine")
+            }
+            add(
+                StreamSource(
+                    resourceId = stream.string("id", "resourceId").orEmpty(),
+                    url = finalUrl,
+                    resolution = stream.int("resolution", "quality"),
+                    codec = stream.string("codec", "codecName", "encode", "format"),
+                    audio = audio,
+                    sizeBytes = stream.longOrNull("size", "fileSize", "sizeBytes"),
+                    filename = filename,
+                    durationSeconds = stream.durationSeconds("duration", "runtime", "length"),
+                    uploader = stream.string("uploadBy", "uploader", "sourceName"),
+                    headers = headers,
+                ),
+            )
+        }
+    }.distinctBy { it.resourceId.ifBlank { it.url.substringBefore('?') } }
 }
 
 internal data class ResourcePage(
