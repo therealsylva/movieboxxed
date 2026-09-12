@@ -118,7 +118,7 @@ fun PlayerScreen(
             playWhenReady = true
         }
     }
-    val mediaSession = remember { MediaSession.Builder(context, player).build() }
+    val mediaSession = remember(player) { MediaSession.Builder(context, player).build() }
     var selectedSubtitle by remember { mutableStateOf<SubtitleTrack?>(null) }
     var showSubtitlePicker by remember { mutableStateOf(false) }
     var showSpeedPicker by remember { mutableStateOf(false) }
